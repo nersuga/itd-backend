@@ -35,7 +35,11 @@ PHONES = f'{PREFIX}tg:phones'
 CHAT_PHONES = f'{PREFIX}tg:chatphones'
 
 log = logging.getLogger('openitd-bot')
-redis = Redis.from_url(REDIS_URL, decode_responses=True)
+# how long deliver() waits for a message in the outbox
+OUTBOX_WAIT = 5
+# a read must outlast that wait: redis-py 8 gives up on a read after 5 seconds by default, so every wait on an
+# empty outbox ended in "Timeout reading from localhost:6379"
+redis = Redis.from_url(REDIS_URL, decode_responses=True, socket_timeout=OUTBOX_WAIT + 25, socket_connect_timeout=5)
 dp = Dispatcher()
 
 SHARE_PHONE = ReplyKeyboardMarkup(
@@ -141,7 +145,7 @@ async def deliver(bot: Bot) -> None:
     """Sends the codes queued by the backend."""
     while True:
         try:
-            item = await redis.blpop([OUTBOX], timeout=5)
+            item = await redis.blpop([OUTBOX], timeout=OUTBOX_WAIT)
         except Exception:
             log.exception('redis is unavailable')
             await asyncio.sleep(3)
